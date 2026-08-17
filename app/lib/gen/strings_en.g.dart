@@ -1157,6 +1157,9 @@ class Translations$settingsTab$send$en {
   /// en: 'Automatically accept requests in "Share via link" mode'
   String get shareViaLinkAutoAccept => 'Automatically accept requests in "Share via link" mode';
 
+  /// en: 'Keep "Share via link" active after leaving the page'
+  String get keepWebSendActive => 'Keep "Share via link" active after leaving the page';
+
   /// en: 'Create checksums when sending files'
   String get createChecksums => 'Create checksums when sending files';
 }

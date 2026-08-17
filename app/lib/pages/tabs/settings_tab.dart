@@ -11,6 +11,7 @@ import 'package:localsend_app/pages/donation/donation_page.dart';
 import 'package:localsend_app/pages/settings/network_interfaces_page.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
+import 'package:localsend_app/provider/persistence_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/provider/version_provider.dart';
 import 'package:localsend_app/util/alias_generator.dart';
@@ -31,6 +32,7 @@ import 'package:localsend_app/widget/local_send_logo.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
+import 'package:nanoid2/nanoid2.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -285,6 +287,7 @@ class SettingsTab extends StatelessWidget {
                       await ref.notifier(settingsProvider).setShareViaLinkAutoAccept(b);
                     },
                   ),
+                  _KeepWebSendActiveEntry(),
                   _BooleanEntry(
                     label: t.settingsTab.send.createChecksums,
                     value: vm.settings.createChecksums,
@@ -676,6 +679,49 @@ class _BooleanEntry extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Toggle for the persistent "share via link" feature.
+/// The state lives in [PersistenceService] (not in [SettingsState]) so that
+/// enabling it does not require a server restart or a mapper regeneration.
+class _KeepWebSendActiveEntry extends StatefulWidget {
+  @override
+  State<_KeepWebSendActiveEntry> createState() => _KeepWebSendActiveEntryState();
+}
+
+class _KeepWebSendActiveEntryState extends State<_KeepWebSendActiveEntry> with Refena {
+  late bool _value = ref.read(persistenceProvider).getKeepWebSendActive();
+
+  @override
+  Widget build(BuildContext context) {
+    return _BooleanEntry(
+      label: t.settingsTab.send.keepWebSendActive,
+      value: _value,
+      onChanged: (b) async {
+        final persistence = ref.read(persistenceProvider);
+        // Enabling the persistent link locks a pin so the unowned endpoint is
+        // never exposed without one; disabling clears the locked pin.
+        if (b) {
+          var pin = persistence.getWebSendPin();
+          if (pin == null) {
+            pin = nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
+            await persistence.setWebSendPin(pin);
+          }
+          // Apply to a running web send server immediately, if any.
+          final serverState = ref.read(serverProvider);
+          if (serverState != null && serverState.webSendState != null && serverState.webPin != pin) {
+            await ref.notifier(serverProvider).setWebPin(pin);
+          }
+        } else {
+          await persistence.setWebSendPin(null);
+        }
+        await persistence.setKeepWebSendActive(b);
+        if (mounted) {
+          setState(() => _value = b);
+        }
+      },
     );
   }
 }

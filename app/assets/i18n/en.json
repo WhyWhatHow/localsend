@@ -127,6 +127,7 @@
     "send": {
       "title": "Send",
       "shareViaLinkAutoAccept": "Automatically accept requests in \"Share via link\" mode",
+      "keepWebSendActive": "Keep \"Share via link\" active after leaving the page",
       "createChecksums": "Create checksums when sending files"
     },
     "network": {
