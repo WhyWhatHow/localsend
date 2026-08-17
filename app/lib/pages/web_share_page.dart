@@ -131,6 +131,24 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
     await ref.notifier(serverProvider).restartServerFromSettings();
   }
 
+  /// Toggles the persistent ("keep link active") mode.
+  /// Enabling locks a pin so the unowned endpoint is never exposed without one.
+  Future<void> _setKeepActive(bool enable) async {
+    final persistence = ref.read(persistenceProvider);
+    if (enable) {
+      final currentPin = ref.read(serverProvider)?.webPin;
+      final lockedPin = currentPin ?? nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
+      await ref.notifier(serverProvider).setWebPin(lockedPin);
+      await persistence.setWebSendPin(lockedPin);
+      // There is no page left to approve downloads, so auto-accept.
+      ref.notifier(serverProvider).setWebSendAutoAccept(true);
+    }
+    await persistence.setKeepWebSendActive(enable);
+    if (mounted) {
+      setState(() => _keepActive = enable);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -164,6 +182,18 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_sendMode ? t.webSharePage.title : t.webReceivePage.title),
+          actions: _sendMode
+              ? [
+                  Tooltip(
+                    message: t.webSharePage.keepActive,
+                    child: IconButton(
+                      icon: Icon(_keepActive ? Icons.push_pin : Icons.push_pin_outlined),
+                      color: _keepActive ? Theme.of(context).colorScheme.primary : null,
+                      onPressed: () => _setKeepActive(!_keepActive),
+                    ),
+                  ),
+                ]
+              : null,
         ),
         body: Builder(
           builder: (context) {
@@ -437,24 +467,7 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
                       const SizedBox(width: 10),
                       Checkbox(
                         value: _keepActive,
-                        onChanged: (value) async {
-                          final persistence = ref.read(persistenceProvider);
-                          final enable = value == true;
-                          if (enable) {
-                            // Lock the current pin (or generate a fresh one) so the
-                            // unowned persistent link is not exposed without a pin.
-                            final currentPin = ref.read(serverProvider)?.webPin;
-                            final lockedPin = currentPin ?? nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
-                            await ref.notifier(serverProvider).setWebPin(lockedPin);
-                            await persistence.setWebSendPin(lockedPin);
-                            // There is no page left to approve downloads, so auto-accept.
-                            ref.notifier(serverProvider).setWebSendAutoAccept(true);
-                          }
-                          await persistence.setKeepWebSendActive(enable);
-                          if (mounted) {
-                            setState(() => _keepActive = enable);
-                          }
-                        },
+                        onChanged: (value) => _setKeepActive(value == true),
                       ),
                     ],
                   ),
