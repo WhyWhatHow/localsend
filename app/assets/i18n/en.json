@@ -294,6 +294,8 @@
     "requirePin": "Require PIN",
     "pinHint": "The PIN is \"{pin}\"",
     "encryptionHint": "LocalSend uses a self-signed certificate. You need to accept it in your browser.",
+    "keepActive": "Keep link active",
+    "keepActiveHint": "The link stays available while LocalSend is running, even after leaving this page. Open it again with files to change them; requests are accepted automatically.",
     "pendingRequests": "Pending requests: {n}"
   },
   "webReceivePage": {

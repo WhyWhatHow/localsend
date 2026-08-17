@@ -91,6 +91,8 @@ const _deviceType = 'ls_device_type';
 const _deviceModel = 'ls_device_model';
 const _shareViaLinkAutoAccept = 'ls_share_via_link_auto_accept';
 const _receiveViaLinkAutoAccept = 'ls_receive_via_link_auto_accept';
+const _keepWebSendActive = 'ls_keep_web_send_active';
+const _webSendPin = 'ls_web_send_pin';
 const _createChecksums = 'ls_create_checksums';
 const _verifyChecksums = 'ls_verify_checksums';
 const _advancedSettingsKey = 'ls_advanced_settings';
@@ -471,6 +473,26 @@ class PersistenceService {
       await _prefs.remove(_receivePin);
     } else {
       await _prefs.setString(_receivePin, pin);
+    }
+  }
+
+  bool getKeepWebSendActive() {
+    return _prefs.getBool(_keepWebSendActive) ?? false;
+  }
+
+  Future<void> setKeepWebSendActive(bool keepWebSendActive) async {
+    await _prefs.setBool(_keepWebSendActive, keepWebSendActive);
+  }
+
+  String? getWebSendPin() {
+    return _prefs.getString(_webSendPin);
+  }
+
+  Future<void> setWebSendPin(String? pin) async {
+    if (pin == null) {
+      await _prefs.remove(_webSendPin);
+    } else {
+      await _prefs.setString(_webSendPin, pin);
     }
   }
 

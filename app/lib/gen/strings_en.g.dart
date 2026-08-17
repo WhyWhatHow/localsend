@@ -571,6 +571,12 @@ class Translations$webSharePage$en {
   /// en: 'LocalSend uses a self-signed certificate. You need to accept it in your browser.'
   String get encryptionHint => 'LocalSend uses a self-signed certificate. You need to accept it in your browser.';
 
+  /// en: 'Keep link active'
+  String get keepActive => 'Keep link active';
+
+  /// en: 'The link stays available while LocalSend is running, even after leaving this page. Open it again with files to change them; requests are accepted automatically.'
+  String get keepActiveHint => 'The link stays available while LocalSend is running, even after leaving this page. Open it again with files to change them; requests are accepted automatically.';
+
   /// en: 'Pending requests: {n}'
   String pendingRequests({required Object n}) => 'Pending requests: ${n}';
 }

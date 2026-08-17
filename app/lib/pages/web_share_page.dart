@@ -5,6 +5,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
+import 'package:localsend_app/provider/persistence_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
@@ -14,6 +15,7 @@ import 'package:localsend_app/widget/dialogs/zoom_dialog.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/util/sleep.dart';
 import 'package:logging/logging.dart';
+import 'package:nanoid2/nanoid2.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
@@ -40,6 +42,7 @@ class WebSharePage extends StatefulWidget {
 class _WebSharePageState extends State<WebSharePage> with Refena {
   _ServerState _stateEnum = _ServerState.initializing;
   bool _encrypted = false;
+  bool _keepActive = false;
   String? _initializedError;
 
   bool get _sendMode => widget.files != null;
@@ -65,9 +68,23 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
 
       // The pin of a previous web share session is kept;
       // receive mode initially uses the receive pin from settings.
+      // In persistent ("keep active") send mode the locked pin is reused.
       final previousState = ref.read(serverProvider);
       final wasWebActive = previousState?.webSendState != null || previousState?.webUpload == true;
-      final webPin = wasWebActive ? previousState?.webPin : (files == null ? settings.receivePin : null);
+      final persistence = ref.read(persistenceProvider);
+      final keepActive = files != null && persistence.getKeepWebSendActive();
+      _keepActive = keepActive;
+      var webPin = keepActive
+          ? persistence.getWebSendPin()
+          : wasWebActive
+              ? previousState?.webPin
+              : (files == null ? settings.receivePin : null);
+      if (keepActive && webPin == null) {
+        // Lock a fresh pin for the persistent link, since it stays accessible
+        // without an owner page that could approve requests.
+        webPin = nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
+        await persistence.setWebSendPin(webPin);
+      }
 
       if (files != null) {
         // The auto accept setting of a previous web send state is kept.
@@ -90,6 +107,11 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
               webUpload: true,
               webPin: webPin,
             );
+      }
+      if (keepActive) {
+        // The persistent link has no owner page to approve downloads,
+        // so every request is accepted automatically.
+        ref.notifier(serverProvider).setWebSendAutoAccept(true);
       }
       setState(() {
         _stateEnum = _ServerState.running;
@@ -117,17 +139,22 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
           return;
         }
 
-        setState(() {
-          _stateEnum = _ServerState.stopping;
-        });
-        await sleepAsync(250);
-        try {
-          // Also needed in the error state: the failed restart already stopped the old server.
-          await _revertServerState();
-        } catch (e) {
-          _logger.warning('Failed to restore the server', e);
+        // In persistent mode the link must stay available after leaving this
+        // page, so the server is NOT reverted to receive-only.
+        final keepActive = _sendMode && ref.read(persistenceProvider).getKeepWebSendActive();
+        if (!keepActive) {
+          setState(() {
+            _stateEnum = _ServerState.stopping;
+          });
+          await sleepAsync(250);
+          try {
+            // Also needed in the error state: the failed restart already stopped the old server.
+            await _revertServerState();
+          } catch (e) {
+            _logger.warning('Failed to restore the server', e);
+          }
+          await sleepAsync(250);
         }
-        await sleepAsync(250);
 
         if (context.mounted) {
           context.pop();
@@ -376,6 +403,8 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
                       onChanged: (value) async {
                         if (pin != null) {
                           await ref.notifier(serverProvider).setWebPin(null);
+                          // The locked pin (if any) is cleared too when the link is persistent.
+                          await ref.read(persistenceProvider).setWebSendPin(null);
                         } else {
                           final String? newPin = await showDialog<String>(
                             context: context,
@@ -387,6 +416,7 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
 
                           if (newPin != null && newPin.isNotEmpty) {
                             await ref.notifier(serverProvider).setWebPin(newPin);
+                            await ref.read(persistenceProvider).setWebSendPin(newPin);
                           }
                         }
                       },
@@ -398,6 +428,42 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
                     t.webSharePage.pinHint(pin: pin),
                     style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Theme.of(context).colorScheme.warning),
                   ),
+                if (_sendMode) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(t.webSharePage.keepActive, style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(width: 10),
+                      Checkbox(
+                        value: _keepActive,
+                        onChanged: (value) async {
+                          final persistence = ref.read(persistenceProvider);
+                          final enable = value == true;
+                          if (enable) {
+                            // Lock the current pin (or generate a fresh one) so the
+                            // unowned persistent link is not exposed without a pin.
+                            final currentPin = ref.read(serverProvider)?.webPin;
+                            final lockedPin = currentPin ?? nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
+                            await ref.notifier(serverProvider).setWebPin(lockedPin);
+                            await persistence.setWebSendPin(lockedPin);
+                            // There is no page left to approve downloads, so auto-accept.
+                            ref.notifier(serverProvider).setWebSendAutoAccept(true);
+                          }
+                          await persistence.setKeepWebSendActive(enable);
+                          if (mounted) {
+                            setState(() => _keepActive = enable);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  if (_keepActive)
+                    Text(
+                      t.webSharePage.keepActiveHint,
+                      style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Theme.of(context).colorScheme.warning),
+                    ),
+                ],
               ],
             );
           },
