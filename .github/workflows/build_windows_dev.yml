@@ -1,9 +1,29 @@
 name: Build Windows (dev)
 
-# Manual only. Produces an unsigned win_x64 "runner Release" archive you can
-# download and run locally, without requiring code-signing secrets.
+# Manual only. Builds an unsigned win_x64 "runner Release" archive and uploads
+# it as a workflow artifact. Optionally also creates a GitHub Release in the
+# current repository (e.g. your fork) and attaches the zip to it.
+#
+# Only the repository's built-in GITHUB_TOKEN is used, so this works in a fork
+# without any code-signing credentials or official secrets.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: |
+          (Optional) Release tag, e.g. "v1.16.0-test". If empty, the zip is
+          only uploaded as a workflow artifact and no GitHub Release is created.
+        required: false
+        type: string
+      prerelease:
+        description: Mark the release as a pre-release.
+        required: false
+        default: true
+        type: boolean
+      release_name:
+        description: Override the release title (defaults to the tag).
+        required: false
+        type: string
 
 env:
   FLUTTER_VERSION: "3.41.9"
@@ -18,6 +38,12 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Get version from pubspec.yaml
+        id: version
+        run: |
+          $v = (Select-String -Path app\pubspec.yaml '^version: ([0-9]+\.[0-9]+\.[0-9]+)').Matches[0].Groups[1].Value
+          Write-Output "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -39,11 +65,24 @@ jobs:
           Copy-Item ../support/build/windows/x64/msvcp140.dll build/windows/x64/runner/Release/
           Copy-Item ../support/build/windows/x64/vcruntime140.dll build/windows/x64/runner/Release/
           Copy-Item ../support/build/windows/x64/vcruntime140_1.dll build/windows/x64/runner/Release/
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath localsend_windows_x64_dev.zip
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "LocalSend-${{ steps.version.outputs.version }}-windows-x86-64-dev.zip"
 
+      # Always keep the artifact available, even when no Release is created.
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: localsend-windows-x64-dev
-          path: app/localsend_windows_x64_dev.zip
+          path: app/LocalSend-${{ steps.version.outputs.version }}-windows-x86-64-dev.zip
           if-no-files-found: error
+
+      - name: Create and upload GitHub Release
+        if: ${{ inputs.tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.release_name || inputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          files: app/LocalSend-${{ steps.version.outputs.version }}-windows-x86-64-dev.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
