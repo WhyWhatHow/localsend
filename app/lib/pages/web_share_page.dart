@@ -136,12 +136,19 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
   Future<void> _setKeepActive(bool enable) async {
     final persistence = ref.read(persistenceProvider);
     if (enable) {
-      final currentPin = ref.read(serverProvider)?.webPin;
-      final lockedPin = currentPin ?? nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
-      await ref.notifier(serverProvider).setWebPin(lockedPin);
-      await persistence.setWebSendPin(lockedPin);
-      // There is no page left to approve downloads, so auto-accept.
+      // Lock the pin already served by a running web-send server. If the server
+      // is not serving yet (e.g. still initializing), keep the persisted pin as
+      // is and let _init() lock a fresh one — otherwise a pin generated here
+      // could diverge from the one actually served.
+      final serverState = ref.read(serverProvider);
+      if (serverState?.webSendState != null && serverState?.webPin != null) {
+        await persistence.setWebSendPin(serverState!.webPin);
+      }
+      // A persistent link has no owner page to approve downloads, so auto-accept.
       ref.notifier(serverProvider).setWebSendAutoAccept(true);
+    } else {
+      // Turning persistence off clears the locked pin, matching the settings tab.
+      await persistence.setWebSendPin(null);
     }
     await persistence.setKeepWebSendActive(enable);
     if (mounted) {

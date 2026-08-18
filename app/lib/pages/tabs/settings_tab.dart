@@ -692,13 +692,14 @@ class _KeepWebSendActiveEntry extends StatefulWidget {
 }
 
 class _KeepWebSendActiveEntryState extends State<_KeepWebSendActiveEntry> with Refena {
-  late bool _value = ref.read(persistenceProvider).getKeepWebSendActive();
-
   @override
   Widget build(BuildContext context) {
+    // Read the persisted value on every build so the toggle reflects changes
+    // made from the "Share via link" page (both entries share this key).
+    final active = ref.read(persistenceProvider).getKeepWebSendActive();
     return _BooleanEntry(
       label: t.settingsTab.send.keepWebSendActive,
-      value: _value,
+      value: active,
       onChanged: (b) async {
         final persistence = ref.read(persistenceProvider);
         // Enabling the persistent link locks a pin so the unowned endpoint is
@@ -709,7 +710,7 @@ class _KeepWebSendActiveEntryState extends State<_KeepWebSendActiveEntry> with R
             pin = nanoid(alphabet: Alphabet.noDoppelganger, length: 6);
             await persistence.setWebSendPin(pin);
           }
-          // Apply to a running web send server immediately, if any.
+          // Apply to a running web-send server immediately, if any.
           final serverState = ref.read(serverProvider);
           if (serverState != null && serverState.webSendState != null && serverState.webPin != pin) {
             await ref.notifier(serverProvider).setWebPin(pin);
@@ -719,7 +720,7 @@ class _KeepWebSendActiveEntryState extends State<_KeepWebSendActiveEntry> with R
         }
         await persistence.setKeepWebSendActive(b);
         if (mounted) {
-          setState(() => _value = b);
+          setState(() {});
         }
       },
     );
