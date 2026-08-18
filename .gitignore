@@ -19,3 +19,6 @@
 
 # Generated at build time by makepri (see support/scripts/compile_windows_msix_helper.ps1)
 /support/build/msix/content/resources.pri
+
+# Stray tool-generated package (downloaded web assets) that must not be committed
+/.trae-html-share-packages/
